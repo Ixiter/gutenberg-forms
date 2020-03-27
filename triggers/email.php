@@ -45,6 +45,7 @@
             }
         }
 
+
         private function get_templates($id, $blocks = null) {
             if (is_null($blocks)) {
                 $blocks = $this->post_content;
@@ -78,7 +79,7 @@
                     if (array_key_exists('email' ,$attributes)) {
                         $user_email = $attributes['email'];
 
-                        if ($this->validator->validate('email' , $user_email)) {
+                        if ($this->validator->isEmail($user_email)) {
                             $decoded_template['email'] = $user_email;
                         }
                     }
@@ -108,6 +109,12 @@
                         $decoded_template['successMessage'] = $attributes['successMessage'];
                     } else {
                         $decoded_template['successMessage'] = "The form has been submitted Successfully!";
+                    }
+
+                    if (array_key_exists('hideFormOnSuccess' , $attributes)) {
+                        $decoded_template['hideFormOnSuccess'] = $attributes['hideFormOnSuccess'];
+                    } else {
+                        $decoded_template['hideFormOnSuccess'] = false;
                     }
 
                     $templates[] = $decoded_template;
@@ -146,7 +153,6 @@
 
         public function init() {
 
-
             $arranged_fields = array();
 
             $post = $_POST;
@@ -164,17 +170,17 @@
 
                 $field_type = end( $exploded_id ); //type of th e field i.e email,name etc;
 
-                $is_valid = $this->validator->validate( $field_type, $field_value );
 
                 $f_DECODED = $this->validator->decode( $field_type );
 
 
                 $type = array_key_exists('type' , $this->validator->decode( $field_type )) ? $this->validator->decode( $field_type )['type'] : "";
 
+                $is_valid = $this->validator->validate( $type, $field_value, $field_type );
+
                 $id = end($f_DECODED);
 
                 $sanitizedValue = $this->validator->sanitizedValue($type, $field_value);
-
 
                 $sanitized_field_value = NULL;
 
@@ -182,7 +188,9 @@
                     $sanitized_field_value = join("," , $field_value);
                 } else if ( $id === 'upload' ) {
                     $sanitized_field_value = $field_value;
-                }   
+                } else {
+                    $sanitized_field_value = $sanitizedValue;
+                }
 
                 $arranged_data = array(
                     'field_data_id' => $id,
@@ -192,9 +200,9 @@
                     'field_type'  =>  $type
                 );
 
-                // var_dump($this->get_inner_block('cwp/file-upload' , $_POST['submit'])[0]);
 
-                if ($id === 'upload') {
+
+                if ($type === 'file_upload') {
 
                     // updating attachment files;
 
@@ -202,27 +210,49 @@
                     $file_name = $file_to_upload[$field_id]['name'];
                     $tmp_name = $file_to_upload[$field_id]['tmp_name'];
 
-                    $allowed =  array('gif','png' ,'jpg', 'doc', 'docx', 'odt', 'pdf', 'zip', 'rar', '7zip');
+                    $allowed_defaults =  array(
+                        "jpg",
+                        "jpeg",
+                        "png",
+                        "gif",
+                        "pdf",
+                        "doc",
+                        "docx",
+                        "ppt",
+                        "pptx",
+                        "odt",
+                        "avi",
+                        "ogg",
+                        "m4a",
+                        "mov",
+                        "mp3",
+                        "mp4",
+                        "mpg",
+                        "wav",
+                        "wmv"
+                    );
+                    $parsed_alloweds =  json_decode($f_DECODED['extra_meta'], false);
+
+                    // $allowed = sizeof($parsed_alloweds) === 0 ? $allowed_defaults : $parsed_alloweds;
+                    
                     $ext = pathinfo($file_name, PATHINFO_EXTENSION);
                     
-                    if( in_array($ext,$allowed) ) {
+                    if( in_array($ext,$allowed_defaults) ) {
                         move_uploaded_file( $tmp_name, WP_CONTENT_DIR.'/uploads/'.basename( $file_name ) );
                         $file_path = WP_CONTENT_DIR.'/uploads/'.basename( $file_name );
 
                         $this->attachments[] = $file_path;
                         
-                    } 
+                    } else {
+                        $arranged_data['is_valid'] = false;
+                    }
                     
                 }
 
                 $arranged_fields[] = $arranged_data;
-
-                
-
             }
 
 
-            
            if ( $this->is_fields_valid( $arranged_fields ) ) {
                // check if all the fields are valid;
                 $this->sendMail( $arranged_fields );
@@ -245,9 +275,7 @@
                 }
             }
 
-
             $replaced_str = strtr($target, $data);
-
 
             return $replaced_str;
 
@@ -265,15 +293,23 @@
 
         }
 
-        private function message_success( $message ) {
+        private function message_success( $message, $hideFormOnSuccess ) {
+
 
             $message_id = $_POST['submit'];
 
-            $hidden_style = "<style> #$message_id { display: block !important } </style>";
 
-            if ($this->validator->isEmpty($message)) {
-                echo $hidden_style;
+            $css = "#$message_id { display: block }";
+
+
+            if ($hideFormOnSuccess === true) {
+                $css .= "\n [data-formid=".$message_id."] { display: none; }";
             }
+
+            $hidden_style = "<style> $css </style>";
+
+
+            echo $hidden_style;
 
         }
 
@@ -285,7 +321,7 @@
             if ($successType === "url") {
                 $this->url_success($successURL);
             } else if ($successType === "message") {
-                $this->message_success($successMessage);
+                $this->message_success($successMessage, $hideFormOnSuccess);
             }
 
         }
@@ -301,9 +337,7 @@
             $template = $this->get_templates($_POST['submit'])[0];
 
 
-
             isset($template) && extract($template);
-
 
             $mail_subject = $this->with_fields($fields, $template[0]['subject']);
             $mail_body = $this->with_fields($fields, $template[0]['body']);
@@ -337,9 +371,12 @@
             if (array_key_exists('email' , $template)) {
 
                 if ($this->validator->isEmpty($headers)) {
-                    wp_mail($template['email'],$mail_subject,$mail_body , null, $this->attachments);
+                    print 'MAIL SENDED';
+
+                    // wp_mail($template['email'],$mail_subject,$mail_body , null, $this->attachments);
                 } else {
-                    wp_mail($template['email'],$mail_subject,$mail_body , $headers, $this->attachments);
+                    print 'MAIL SENDED';
+                    // wp_mail($template['email'],$mail_subject,$mail_body , $headers, $this->attachments);
                 }
 
                 $this->attempt_success($template);
@@ -347,11 +384,13 @@
             } else {
 
                 if ($this->validator->isEmpty($headers)) {
-                    wp_mail(get_bloginfo('admin_email'),$mail_subject,$mail_body, null, $this->attachments);
-                    
+                    print 'MAIL SENDED';
 
+                    // wp_mail(get_bloginfo('admin_email'),$mail_subject,$mail_body, null, $this->attachments);
                 } else {
-                    wp_mail(get_bloginfo('admin_email'),$mail_subject,$mail_body , $headers , $this->attachments);
+                    print 'MAIL SENDED';
+
+                    // wp_mail(get_bloginfo('admin_email'),$mail_subject,$mail_body , $headers , $this->attachments);
                 }
                 
                 $this->attempt_success($template);

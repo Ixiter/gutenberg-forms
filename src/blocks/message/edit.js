@@ -61,17 +61,8 @@ function edit(props) {
 		minimumLength,
 		maximumLength
 	} = props.attributes;
-	useEffect(() => {
-		let rootMessages = getRootMessages(props.clientId, "message");
 
-		if (rootMessages) {
-			const newMessages = clone(messages);
-
-			assign(newMessages, rootMessages);
-
-			props.setAttributes({ messages: newMessages });
-		}
-
+	const getRootData = () => {
 		if (field_name === "") {
 			props.setAttributes({
 				field_name: getFieldName("message", props.clientId)
@@ -90,7 +81,23 @@ function edit(props) {
 					getEncodedData("message", extract_id(field_name), isRequired)
 			});
 		}
+	}
+
+	useEffect(() => {
+		let rootMessages = getRootMessages(props.clientId, "message");
+
+		if (rootMessages) {
+			const newMessages = clone(messages);
+
+			assign(newMessages, rootMessages);
+
+			props.setAttributes({ messages: newMessages });
+		}
+		getRootData();
+		
 	}, []);
+
+	useEffect(() => getRootData() , [props]);
 
 	const setMessages = (type, m) => {
 		let newMessages = clone(messages);
@@ -139,14 +146,14 @@ function edit(props) {
 							initialPosition={0}
 							onChange={value => props.setAttributes({ minimumLength: value })}
 							min={0}
-							max={100}
+							max={1000}
 						/>
 						<RangeControl
 							label={__('Maximum Length')}
 							value={maximumLength}
 							onChange={value => props.setAttributes({ maximumLength: value })}
 							min={1}
-							max={100}
+							max={1000}
 						/>
 					</div>
 				</PanelBody>

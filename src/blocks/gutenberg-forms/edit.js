@@ -91,7 +91,7 @@ function edit(props) {
 						</div>
 						<div className={`cwp-form ${showEditor}`}>
 							<div className="cwp-editor">
-								<TemplateBuilder data={props} />
+								<TemplateBuilder clientId={props.clientId} data={props} />
 							</div>
 						</div>
 						<div
