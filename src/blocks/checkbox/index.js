@@ -64,6 +64,17 @@ registerBlockType("cwp/checkbox", {
 		fieldStyle: {
 			type: "string",
 			default: "block"
+		},
+		bulkAdd: {
+			type: "boolean",
+			default: false
+		},
+		adminId: {
+			type: "object",
+			default: {
+				default: "",
+				value: ""
+			}
 		}
 	},
 	transforms: {

@@ -16,7 +16,8 @@ function save(props) {
 		recaptcha: { siteKey },
 		formType,
 		encryption,
-		hideFormOnSuccess
+		hideFormOnSuccess,
+		formLabel
 	} = props.attributes;
 
 	const captcha_p = `
@@ -43,7 +44,7 @@ function save(props) {
 	return (
 		<div>
 			<div className="cwp-form" data-formtype={formType} id={formId}>
-				<form method="POST" {...getEncryption()} data-formid={id}>
+				<form method="POST"  {...getEncryption()} data-formid={id}>
 					<InnerBlocks.Content />
 					{recaptcha.enable && (
 						<div
@@ -52,6 +53,18 @@ function save(props) {
 							data-sitekey={siteKey}
 						></div>
 					)}
+					<div style={{ display: 'none' }}>
+						<input
+							type="hidden"
+							name="gf_form_label"
+							value={formLabel}
+						/>
+						<input
+							type="hidden"
+							name="gf_form_id"
+							value={formId}
+						/>
+					</div>
 					{!buttonSetting.disable && (
 						<div className={`cwp-submit ${alignment}`}>
 							<button

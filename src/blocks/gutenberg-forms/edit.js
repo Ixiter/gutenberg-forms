@@ -2,14 +2,16 @@ import React, { useEffect, Fragment } from "react";
 import Inspector from "./Inspector";
 import TemplateBuilder from "./components/templateBuilder";
 import Introduction from "./components/introduction";
-import { isEmpty } from "lodash";
-import { getAllowedBlocks, getFormTemplates } from "../../block/functions/index";
+import { isEmpty, get } from "lodash";
+import { getFormTemplates, detect_similar_forms } from "../../block/functions/index";
 import { getThemeStyling } from "../../block/misc/helper";
+import { TEXT_DOMAIN } from "../../block/constants";
+import { withDispatch } from "@wordpress/data";
+
 const { InnerBlocks, RichText, BlockControls, BlockIcon } = wp.blockEditor;
 const { Button, Toolbar, Tooltip } = wp.components;
 
-const { getBlock } = wp.data.select("core/editor");
-const { serialize } = wp.blocks;
+const { compose } = wp.compose;
 const { __ } = wp.i18n;
 
 function edit(props) {
@@ -21,14 +23,26 @@ function edit(props) {
 		template,
 		id,
 		theme,
-		formType
+		formType,
+		cpt,
+		formLabel
 	} = props.attributes;
 
 	const formId = id && "form-".concat(id.split("-")[1]);
 
 	useEffect(() => {
-		props.setAttributes({ id: "submit-" + props.clientId });
+
+
+		if (id === '' || detect_similar_forms(props.clientId)) {
+			props.setAttributes({ id: "submit-" + props.clientId });
+		}
+
+		if (formLabel === "") {
+			props.setAttributes({ formLabel: "Gutenberg Form" })
+		}
+
 	}, []);
+
 
 	const handleButtonLabel = label => {
 		props.setAttributes({ submitLabel: label });
@@ -49,7 +63,7 @@ function edit(props) {
 		isEmpty(formType) ? null : <Inspector data={props} />,
 		<BlockControls>
 			<Toolbar>
-				<Tooltip text={__(templateBuilder ? "Form Builder" : "Email Builder")}>
+				<Tooltip text={__(templateBuilder ? 'Form Builder' : "Email Builder", TEXT_DOMAIN)}>
 					<Button
 						onClick={() => {
 							props.setAttributes({ templateBuilder: !templateBuilder });
@@ -66,14 +80,13 @@ function edit(props) {
 		<Fragment>
 			{
 				isEmpty(formType) ?
-					<Introduction onSelect={handleTypeChange} /> : <Fragment>
+					<Introduction onSelect={handleTypeChange} data={props} /> : <Fragment>
 						<div
 							id={formId}
 							className={`cwp-form cwp-form_main ${props.className} ${showEditor}`}
 						>
 							<InnerBlocks
 								template={getFormTemplates(formType)}
-								allowedBlocks={getAllowedBlocks(formType)}
 								templateLock={false}
 								renderAppender={() => <InnerBlocks.ButtonBlockAppender />}
 							/>
@@ -99,9 +112,13 @@ function edit(props) {
 						></div>
 					</Fragment>
 			}
-
 		</Fragment>
 	];
 }
 
-export default edit;
+// enforcing template validity on custom post types
+const enforceTemplateValidity = withDispatch((dispatch, props) => {
+	dispatch('core/block-editor').setTemplateValidity(true);
+});
+
+export default compose(enforceTemplateValidity)(edit);

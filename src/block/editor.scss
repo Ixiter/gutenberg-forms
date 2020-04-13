@@ -1,9 +1,19 @@
+@import "../_partials/pre_mixins";
 @import "../_partials/variables";
 @import "../_partials/mixins";
 
 
-.cwp-forms-introduction {
-	@include Introduction();
+@include settings_modal();
+
+.cwp-intro {
+	
+	& div.types {
+
+		& button {
+			margin: 0px 10px;
+		}
+	}
+
 }
 
 .cwp-form {
@@ -141,6 +151,7 @@
 				@include switch();
 			}
 		}
+		@include bulk_add();
 
 		& .cwp-checkbox-set {
 			@include checkbox-field("backend");

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Fragment } from "react";
 import {
 	FormToggle,
 	Toolbar,
@@ -12,15 +12,21 @@ import {
 	getFieldName,
 	extract_id,
 	getEncodedData,
-	strip_tags
+	strip_tags,
+	extract_admin_id,
+	get_admin_id
 } from "../../block/misc/helper";
 
-const { InspectorControls, BlockControls, BlockIcon } = wp.blockEditor;
 
 import { clone, pullAt, set, assign } from "lodash";
-import { getRootMessages } from "../../block/functions/index";
+import { getRootMessages, detect_similar_forms } from "../../block/functions/index";
 import ConditionalLogic from "../../block/components/condition";
+import Bulk_Add from "../components/bulk_add";
+import { TEXT_DOMAIN } from "../../block/constants/index"
 
+
+const { __ } = wp.i18n;
+const { InspectorControls, BlockControls, BlockIcon } = wp.blockEditor;
 const { RichText } = wp.blockEditor;
 
 function edit(props) {
@@ -34,7 +40,9 @@ function edit(props) {
 		messages: { empty },
 		messages,
 		condition,
-		enableCondition
+		enableCondition,
+		bulkAdd,
+		adminId
 	} = props.attributes;
 
 	const [select, setSelect] = useState([]);
@@ -47,22 +55,31 @@ function edit(props) {
 	const selectContainer = useRef();
 
 	const getRootData = () => {
-		if (field_name === "") {
+		if (field_name === "" || detect_similar_forms(props.clientId)) {
+
+
+			const newFieldName = getFieldName("select", props.clientId)
+
+
 			props.setAttributes({
-				field_name: getFieldName("select", props.clientId)
+				field_name: newFieldName,
+				adminId: {
+					value: extract_admin_id(newFieldName, 'select'),
+					default: extract_admin_id(newFieldName, 'select')
+				}
 			});
 			props.setAttributes({
 				id:
 					props.clientId +
 					"__" +
-					getEncodedData("select", props.clientId, isRequired)
+					getEncodedData("select", props.clientId, isRequired, get_admin_id(adminId))
 			});
 		} else if (field_name !== "") {
 			props.setAttributes({
 				id:
 					extract_id(field_name) +
 					"__" +
-					getEncodedData("select", extract_id(field_name), isRequired)
+					getEncodedData("select", extract_id(field_name), isRequired, get_admin_id(adminId))
 			});
 		}
 	}
@@ -85,9 +102,12 @@ function edit(props) {
 		getRootData();
 	}, []);
 
-	useEffect(() => getRootData() , [props]);
+	useEffect(() => getRootData(), [props]);
 
 	useEffect(() => {
+
+		if (bulkAdd) return;
+
 		let boxes = selectContainer.current.querySelectorAll(
 			'.cwp-select-option input[type="text"]'
 		);
@@ -184,6 +204,31 @@ function edit(props) {
 		props.setAttributes({ messages: newMessages });
 	};
 
+	let clearAll = () => {
+
+		const reset = [
+			{
+				label: "Option 1"
+			}
+		]
+
+		setSelect(reset);
+		props.setAttributes({
+			options: reset
+		});
+
+	}
+
+
+	const handleAdminId = (id) => {
+		props.setAttributes({
+			adminId: {
+				...adminId,
+				value: id.replace(/\s|-/g, "_")
+			}
+		})
+	}
+
 	const editView = select.map((s, index) => {
 		return (
 			<div className="cwp-select-option">
@@ -222,26 +267,36 @@ function edit(props) {
 
 	return [
 		<InspectorControls>
-			<PanelBody title="Field Settings" initialOpen={true}>
+			<PanelBody title={__("Field Settings", TEXT_DOMAIN)} initialOpen={true}>
+
+				<div className="cwp-option">
+					<TextControl
+						placeholder={adminId.default}
+						label={__("Field ID", TEXT_DOMAIN)}
+						value={adminId.value}
+						onChange={handleAdminId}
+					/>
+				</div>
+
 				{!enableCondition ? (
 					<PanelRow>
-						<h3 className="cwp-heading">Required</h3>
+						<h3 className="cwp-heading">{__("Required", TEXT_DOMAIN)}</h3>
 						<FormToggle
-							label="Required"
+							label={__("Required", TEXT_DOMAIN)}
 							checked={isRequired}
 							onChange={handleRequired}
 						/>
 					</PanelRow>
 				) : (
-					<div className="cwp-option">
-						<p>
-							<Icon icon="info" /> You cannot set a conditional field required!
-						</p>
-					</div>
-				)}
+						<div className="cwp-option">
+							<p>
+								<Icon icon="info" /> {__("You cannot set a conditional field required!", TEXT_DOMAIN)}
+							</p>
+						</div>
+					)}
 				{isRequired && (
 					<div className="cwp-option">
-						<h3 className="cwp-heading">Required Text</h3>
+						<h3 className="cwp-heading">{__("Required Text", TEXT_DOMAIN)}</h3>
 						<TextControl
 							onChange={label => props.setAttributes({ requiredLabel: label })}
 							value={requiredLabel}
@@ -249,7 +304,7 @@ function edit(props) {
 					</div>
 				)}
 			</PanelBody>
-			<PanelBody title="Condition">
+			<PanelBody title={__("Condition", TEXT_DOMAIN)}>
 				<ConditionalLogic
 					condition={condition}
 					set={props.setAttributes}
@@ -258,9 +313,9 @@ function edit(props) {
 				/>
 			</PanelBody>
 			{isRequired && (
-				<PanelBody title="Messages">
+				<PanelBody title={__("Messages", TEXT_DOMAIN)}>
 					<div className="cwp-option">
-						<h3 className="cwp-heading">Required Error</h3>
+						<h3 className="cwp-heading">{__("Required Error", TEXT_DOMAIN)}</h3>
 						<TextControl
 							onChange={label => setMessages("empty", label)}
 							value={empty}
@@ -273,31 +328,41 @@ function edit(props) {
 		<div
 			className={`cwp-select cwp-field ${
 				!props.isSelected ? props.className : ""
-			}`}
+				}`}
 		>
-			{!!props.isSelected && !enableCondition && (
-				<div className="cwp-required">
-					<h3>Required</h3>
-					<FormToggle checked={isRequired} onChange={handleRequired} />
-				</div>
-			)}
-
-			<div className="cwp-select-set" ref={selectContainer}>
-				<div className="cwp-label-wrap">
-					<RichText tag="label" value={label} onChange={handleLabel} />
-					{!props.isSelected && isRequired && !enableCondition && (
-						<div className="cwp-required cwp-noticed">
-							<h3>{requiredLabel}</h3>
+			{
+				bulkAdd ? <Bulk_Add onChange={(c) => setSelect(c)} data={props} /> : <Fragment>
+					{!!props.isSelected && !enableCondition && (
+						<div className="cwp-required">
+							<h3>{__("Required", TEXT_DOMAIN)}</h3>
+							<FormToggle checked={isRequired} onChange={handleRequired} />
 						</div>
 					)}
-				</div>
-				{!!props.isSelected ? editView : <SelectView />}
-				{!!props.isSelected && (
-					<div className="cwp-select-controls">
-						<button onClick={addSelect}>Add Option</button>
+
+					<div className="cwp-select-set" ref={selectContainer}>
+						<div className="cwp-label-wrap">
+							<RichText tag="label" value={label} onChange={handleLabel} />
+							{!props.isSelected && isRequired && !enableCondition && (
+								<div className="cwp-required cwp-noticed">
+									<h3>{requiredLabel}</h3>
+								</div>
+							)}
+						</div>
+						{!!props.isSelected ? editView : <SelectView />}
+						{!!props.isSelected && (
+							<div className="cwp-select-controls">
+								<div>
+									<Button isDefault onClick={addSelect}>{__("Add Option", TEXT_DOMAIN)}</Button>
+									<Button isDefault onClick={() => props.setAttributes({ bulkAdd: true })}>{__("Bulk Add", TEXT_DOMAIN)}</Button>
+								</div>
+								<div>
+									<Button onClick={clearAll}>{__("Clear All", TEXT_DOMAIN)}</Button>
+								</div>
+							</div>
+						)}
 					</div>
-				)}
-			</div>
+				</Fragment>
+			}
 		</div>
 	];
 }

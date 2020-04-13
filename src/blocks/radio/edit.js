@@ -12,18 +12,24 @@ import {
 import {
 	getFieldName,
 	extract_id,
-	getEncodedData
+	getEncodedData,
+	extract_admin_id,
+	get_admin_id
 } from "../../block/misc/helper";
 import ImageUpload from "../../block/components/imageUpload";
 import ImagePreview from "../../block/components/imagePreview";
 import ConditionalLogic from "../../block/components/condition";
+import Bulk_Add from "../components/bulk_add";
+import { TEXT_DOMAIN } from "../../block/constants/index"
 
-const { InspectorControls, BlockControls, BlockIcon } = wp.blockEditor;
 
 import { clone, pullAt, isEqual, has, set, assign } from "lodash";
-import { getRootMessages } from "../../block/functions/index";
+import { getRootMessages, detect_similar_forms } from "../../block/functions/index";
 
 const { RichText } = wp.blockEditor;
+const { __ } = wp.i18n;
+const { InspectorControls, BlockControls, BlockIcon } = wp.blockEditor;
+
 
 function edit(props) {
 	let {
@@ -37,7 +43,9 @@ function edit(props) {
 		messages,
 		condition,
 		enableCondition,
-		fieldStyle
+		fieldStyle,
+		bulkAdd,
+		adminId
 	} = props.attributes;
 
 	const radiosContainer = useRef();
@@ -50,22 +58,30 @@ function edit(props) {
 	});
 
 	const getRootData = () => {
-		if (field_name === "") {
+		if (field_name === "" || detect_similar_forms(props.clientId)) {
+
+
+			const newFieldName = getFieldName("radio", props.clientId)
+
 			props.setAttributes({
-				field_name: getFieldName("radio", props.clientId)
+				field_name: newFieldName,
+				adminId: {
+					value: extract_admin_id(newFieldName, 'radio'),
+					default: extract_admin_id(newFieldName, 'radio')
+				}
 			});
 			props.setAttributes({
 				id:
 					props.clientId +
 					"__" +
-					getEncodedData("radio", props.clientId, isRequired)
+					getEncodedData("radio", props.clientId, isRequired, get_admin_id(adminId))
 			});
 		} else if (field_name !== "") {
 			props.setAttributes({
 				id:
 					extract_id(field_name) +
 					"__" +
-					getEncodedData("radio", extract_id(field_name), isRequired)
+					getEncodedData("radio", extract_id(field_name), isRequired, get_admin_id(adminId))
 			});
 		}
 	}
@@ -104,9 +120,12 @@ function edit(props) {
 		getRootData();
 	}, []);
 
-	useEffect(() => getRootData() , [props]);
+	useEffect(() => getRootData(), [props]);
 
 	useEffect(() => {
+
+		if (bulkAdd) return;
+
 		let boxes = radiosContainer.current.querySelectorAll(
 			'.cwp-radios-option input[type="text"]'
 		);
@@ -236,12 +255,46 @@ function edit(props) {
 		props.setAttributes({ messages: newMessages });
 	};
 
+	let clearAll = () => {
+
+		const reset = [
+			{
+				label: "Option 1"
+			}
+		]
+
+		setRadios(reset);
+		props.setAttributes({
+			options: reset
+		});
+
+	}
+
+	const handleAdminId = (id) => {
+		props.setAttributes({
+			adminId: {
+				...adminId,
+				value: id.replace(/\s|-/g, "_")
+			}
+		})
+	}
+
 	return [
 		<InspectorControls>
 			<PanelBody title="Field Settings" initialOpen={true}>
+
+				<div className="cwp-option">
+					<TextControl
+						placeholder={adminId.default}
+						label={__("Field ID", TEXT_DOMAIN)}
+						value={adminId.value}
+						onChange={handleAdminId}
+					/>
+				</div>
+
 				{!enableCondition ? (
 					<PanelRow>
-						<h3 className="cwp-heading">Required</h3>
+						<h3 className="cwp-heading">{__("Required", TEXT_DOMAIN)}</h3>
 						<FormToggle
 							label="Required"
 							checked={isRequired}
@@ -249,15 +302,15 @@ function edit(props) {
 						/>
 					</PanelRow>
 				) : (
-					<div className="cwp-option">
-						<p>
-							<Icon icon="info" /> You cannot set a conditional field required!
-						</p>
-					</div>
-				)}
+						<div className="cwp-option">
+							<p>
+								<Icon icon="info" /> {__("You cannot set a conditional field required!", TEXT_DOMAIN)}
+							</p>
+						</div>
+					)}
 				{isRequired && (
 					<div className="cwp-option">
-						<h3 className="cwp-heading">Required Text</h3>
+						<h3 className="cwp-heading">{__("Required Text", TEXT_DOMAIN)}</h3>
 						<TextControl
 							onChange={label => props.setAttributes({ requiredLabel: label })}
 							value={requiredLabel}
@@ -266,11 +319,11 @@ function edit(props) {
 				)}
 				<div className="cwp-option">
 					<SelectControl
-						label="Layout"
+						label={__("Layout", TEXT_DOMAIN)}
 						value={fieldStyle}
 						options={[
-							{ label: "Block", value: "block" },
-							{ label: "Inline", value: "inline" }
+							{ label: __("Block", TEXT_DOMAIN), value: "block" },
+							{ label: __("Inline", TEXT_DOMAIN), value: "inline" }
 						]}
 						onChange={s => {
 							props.setAttributes({ fieldStyle: s });
@@ -288,9 +341,9 @@ function edit(props) {
 			</PanelBody>
 
 			{isRequired && (
-				<PanelBody title="Messages">
+				<PanelBody title={__("Messages", TEXT_DOMAIN)}>
 					<div className="cwp-option">
-						<h3 className="cwp-heading">Required Error</h3>
+						<h3 className="cwp-heading">{__("Required Error", TEXT_DOMAIN)}</h3>
 						<TextControl
 							onChange={label => setMessages("empty", label)}
 							value={empty}
@@ -303,103 +356,113 @@ function edit(props) {
 		<div
 			className={`cwp-radios cwp-field ${props.className} is-style-${fieldStyle}`}
 		>
-			{!!props.isSelected && !enableCondition && (
-				<div className="cwp-required">
-					<h3>Required</h3>
-					<FormToggle checked={isRequired} onChange={handleRequired} />
-				</div>
-			)}
-
-			<div
-				ref={radiosContainer}
-				className={`cwp-radios-set ${
-					!props.isSelected ? "cwp-radio-set-preview" : ""
-				}`}
-			>
-				<div className="cwp-label-wrap">
-					<RichText tag="label" value={label} onChange={handleLabel} />
-					{!props.isSelected && isRequired && !enableCondition && (
-						<div className="cwp-required cwp-noticed">
-							<h3>{requiredLabel}</h3>
+			{
+				bulkAdd ? <Bulk_Add onChange={(c) => setRadios(c)} data={props} /> : <Fragment>
+					{!!props.isSelected && !enableCondition && (
+						<div className="cwp-required">
+							<h3>{__("Required", TEXT_DOMAIN)}</h3>
+							<FormToggle checked={isRequired} onChange={handleRequired} />
 						</div>
 					)}
-				</div>
-				{radios.map((radio, index) => {
-					const hasImage = has(radio, "image"),
-						image = hasImage ? radio.image.url : "";
 
-					return (
-						<Fragment>
-							<div className="cwp-radios-option">
-								<input
-									id={id.concat(index.toString())}
-									checked={radio.checked}
-									onClick={() => handleCheck(!radio.checked, index)}
-									type="radio"
-								/>
-								{!!props.isSelected && (
-									<label
-										style={{ width: "auto" }}
-										onClick={() => handleCheck(!radio.checked, index)}
-										for={id.concat(index.toString())}
-									></label>
-								)}
-								{!!props.isSelected ? (
-									<input
-										onKeyDown={e => {
-											e.key === "Enter" && handleEnter(index);
-											e.key === "Backspace" && handleBackspace(index);
-										}}
-										onChange={e => handleChange(e, index)}
-										type="text"
-										value={radio.label}
-									/>
-								) : (
-									<label>
-										{radio.label}{" "}
-										{hasImage && !props.isSelected && (
-											<ImagePreview
-												onEdit={img => handleImage(img, index, "add")}
-												onRemove={() => handleImage(null, index, "remove")}
-												isSelected={props.isSelected}
-												image={radio.image}
-											/>
-										)}
-									</label>
-								)}
-								{!!props.isSelected && (
-									<Fragment>
-										<ImageUpload
-											icon="format-image"
-											value={image}
-											onSelect={img => handleImage(img, index, "add")}
-										/>
-										<Button isDefault onClick={() => handleDuplicate(index)}>
-											<Icon icon="admin-page" />
-										</Button>
-										<Button isDefault onClick={() => handleDelete(index)}>
-											<Icon icon="no-alt" />
-										</Button>
-									</Fragment>
-								)}
-							</div>
-							{hasImage && !!props.isSelected && (
-								<ImagePreview
-									onEdit={img => handleImage(img, index, "add")}
-									onRemove={() => handleImage(null, index, "remove")}
-									isSelected={props.isSelected}
-									image={radio.image}
-								/>
+					<div
+						ref={radiosContainer}
+						className={`cwp-radios-set ${
+							!props.isSelected ? "cwp-radio-set-preview" : ""
+							}`}
+					>
+						<div className="cwp-label-wrap">
+							<RichText tag="label" value={label} onChange={handleLabel} />
+							{!props.isSelected && isRequired && !enableCondition && (
+								<div className="cwp-required cwp-noticed">
+									<h3>{requiredLabel}</h3>
+								</div>
 							)}
-						</Fragment>
-					);
-				})}
-				{!!props.isSelected && (
-					<div className="cwp-radios-controls">
-						<button onClick={addRadio}>Add Option</button>
+						</div>
+						{radios.map((radio, index) => {
+							const hasImage = has(radio, "image"),
+								image = hasImage ? radio.image.url : "";
+
+							return (
+								<Fragment>
+									<div className="cwp-radios-option">
+										<input
+											id={id.concat(index.toString())}
+											checked={radio.checked}
+											onClick={() => handleCheck(!radio.checked, index)}
+											type="radio"
+										/>
+										{!!props.isSelected && (
+											<label
+												style={{ width: "auto" }}
+												onClick={() => handleCheck(!radio.checked, index)}
+												for={id.concat(index.toString())}
+											></label>
+										)}
+										{!!props.isSelected ? (
+											<input
+												onKeyDown={e => {
+													e.key === "Enter" && handleEnter(index);
+													e.key === "Backspace" && handleBackspace(index);
+												}}
+												onChange={e => handleChange(e, index)}
+												type="text"
+												value={radio.label}
+											/>
+										) : (
+												<label>
+													{radio.label}{" "}
+													{hasImage && !props.isSelected && (
+														<ImagePreview
+															onEdit={img => handleImage(img, index, "add")}
+															onRemove={() => handleImage(null, index, "remove")}
+															isSelected={props.isSelected}
+															image={radio.image}
+														/>
+													)}
+												</label>
+											)}
+										{!!props.isSelected && (
+											<Fragment>
+												<ImageUpload
+													icon="format-image"
+													value={image}
+													onSelect={img => handleImage(img, index, "add")}
+												/>
+												<Button isDefault onClick={() => handleDuplicate(index)}>
+													<Icon icon="admin-page" />
+												</Button>
+												<Button isDefault onClick={() => handleDelete(index)}>
+													<Icon icon="no-alt" />
+												</Button>
+											</Fragment>
+										)}
+									</div>
+									{hasImage && !!props.isSelected && (
+										<ImagePreview
+											onEdit={img => handleImage(img, index, "add")}
+											onRemove={() => handleImage(null, index, "remove")}
+											isSelected={props.isSelected}
+											image={radio.image}
+										/>
+									)}
+								</Fragment>
+							);
+						})}
+						{!!props.isSelected && (
+							<div className="cwp-radios-controls">
+								<div>
+									<Button isDefault onClick={addRadio}>{__("Add Option", TEXT_DOMAIN)}</Button>
+									<Button isDefault onClick={() => props.setAttributes({ bulkAdd: true })}>{__("Bulk Add", TEXT_DOMAIN)}</Button>
+								</div>
+								<div>
+									<Button onClick={clearAll}>{__("Clear All", TEXT_DOMAIN)}</Button>
+								</div>
+							</div>
+						)}
 					</div>
-				)}
-			</div>
+				</Fragment>
+			}
 		</div>
 	];
 }

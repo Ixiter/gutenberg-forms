@@ -10,20 +10,25 @@ import {
 	SelectControl
 } from "@wordpress/components";
 
-const { InspectorControls, BlockControls, BlockIcon } = wp.blockEditor;
 
 import { clone, pullAt, has, set } from "lodash";
 import ImageUpload from "../../block/components/imageUpload";
 import ImagePreview from "../../block/components/imagePreview";
 import ConditionalLogic from "../../block/components/condition";
-
 import {
 	getFieldName,
 	extract_id,
-	getEncodedData
+	getEncodedData,
+	extract_admin_id,
+	get_admin_id
 } from "../../block/misc/helper";
+import Bulk_Add from "../components/bulk_add";
+import { TEXT_DOMAIN } from "../../block/constants";
+import { detect_similar_forms } from "../../block/functions";
 
 const { RichText } = wp.blockEditor;
+const { __ } = wp.i18n;
+const { InspectorControls, BlockControls, BlockIcon } = wp.blockEditor;
 
 function edit(props) {
 	let {
@@ -37,7 +42,9 @@ function edit(props) {
 		messages: { empty },
 		condition,
 		enableCondition,
-		fieldStyle
+		fieldStyle,
+		bulkAdd,
+		adminId
 	} = props.attributes;
 
 	const [checkboxes, setCheckboxes] = useState([]);
@@ -49,15 +56,24 @@ function edit(props) {
 	let checkboxContainer = useRef();
 
 	const getRootData = () => {
-		if (field_name === "") {
+
+		if (field_name === "" || detect_similar_forms(props.clientId)) {
+
+			const newFieldName = getFieldName('checkbox', props.clientId);
+
 			props.setAttributes({
-				field_name: getFieldName("checkbox", props.clientId)
+				field_name: newFieldName,
+				adminId: {
+					value: extract_admin_id(newFieldName, 'checkbox'),
+					default: extract_admin_id(newFieldName, 'checkbox')
+				}
 			});
+
 			props.setAttributes({
 				id:
 					props.clientId +
 					"__" +
-					getEncodedData("checkbox", props.clientId, isRequired) +
+					getEncodedData("checkbox", props.clientId, isRequired, get_admin_id(adminId)) +
 					"[]"
 			});
 		} else if (field_name !== "") {
@@ -65,7 +81,7 @@ function edit(props) {
 				id:
 					extract_id(field_name) +
 					"__" +
-					getEncodedData("checkbox", extract_id(field_name), isRequired) +
+					getEncodedData("checkbox", extract_id(field_name), isRequired, get_admin_id(adminId)) +
 					"[]"
 			});
 		}
@@ -76,10 +92,10 @@ function edit(props) {
 
 		setCheckboxes(options);
 		getRootData()
-		
+
 	}, []);
 
-	useEffect(() => getRootData() , [props]);
+	useEffect(() => getRootData(), [props]);
 
 	const setMessages = (type, m) => {
 		let newMessages = clone(messages);
@@ -90,6 +106,9 @@ function edit(props) {
 	};
 
 	useEffect(() => {
+
+		if (bulkAdd) return;
+
 		let boxes = checkboxContainer.current.querySelectorAll(
 			'.cwp-checkbox-option input[type="text"]'
 		);
@@ -208,12 +227,46 @@ function edit(props) {
 		}
 	};
 
+	let clearAll = () => {
+
+		const reset = [
+			{
+				label: "Option 1"
+			}
+		]
+
+		setCheckboxes(reset);
+		props.setAttributes({
+			options: reset
+		});
+
+	}
+
+	const handleAdminId = (id) => {
+		props.setAttributes({
+			adminId: {
+				...adminId,
+				value: id.replace(/\s|-/g, "_")
+			}
+		})
+	}
+
 	return [
 		<InspectorControls>
-			<PanelBody title="Field Settings" initialOpen={true}>
+			<PanelBody title={__("Field Settings", TEXT_DOMAIN)} initialOpen={true}>
+
+				<div className="cwp-option">
+					<TextControl
+						placeholder={adminId.default}
+						label={__("Field ID", TEXT_DOMAIN)}
+						value={adminId.value}
+						onChange={handleAdminId}
+					/>
+				</div>
+
 				{!enableCondition ? (
 					<PanelRow>
-						<h3 className="cwp-heading">Required</h3>
+						<h3 className="cwp-heading">{__("Required", TEXT_DOMAIN)}</h3>
 						<FormToggle
 							label="Required"
 							checked={isRequired}
@@ -221,15 +274,15 @@ function edit(props) {
 						/>
 					</PanelRow>
 				) : (
-					<div className="cwp-option">
-						<p>
-							<Icon icon="info" /> You cannot set a conditional field required!
-						</p>
-					</div>
-				)}
+						<div className="cwp-option">
+							<p>
+								<Icon icon="info" /> {__("You cannot set a conditional field required!", TEXT_DOMAIN)}
+							</p>
+						</div>
+					)}
 				{isRequired && (
 					<div className="cwp-option">
-						<h3 className="cwp-heading">Required Text</h3>
+						<h3 className="cwp-heading">{__("Required Text", TEXT_DOMAIN)}</h3>
 						<TextControl
 							onChange={label => props.setAttributes({ requiredLabel: label })}
 							value={requiredLabel}
@@ -238,11 +291,11 @@ function edit(props) {
 				)}
 				<div className="cwp-option">
 					<SelectControl
-						label="Layout"
+						label={__("Layout", TEXT_DOMAIN)}
 						value={fieldStyle}
 						options={[
-							{ label: "Block", value: "block" },
-							{ label: "Inline", value: "inline" }
+							{ label: __("Block", TEXT_DOMAIN), value: "block" },
+							{ label: __("Inline", TEXT_DOMAIN), value: "inline" }
 						]}
 						onChange={s => {
 							props.setAttributes({ fieldStyle: s });
@@ -253,7 +306,7 @@ function edit(props) {
 			{isRequired && (
 				<PanelBody title="Messages">
 					<div className="cwp-option">
-						<h3 className="cwp-heading">Required Error</h3>
+						<h3 className="cwp-heading">{__("Required Error", TEXT_DOMAIN)}</h3>
 						<TextControl
 							onChange={label => setMessages("empty", label)}
 							value={messages.empty}
@@ -261,7 +314,7 @@ function edit(props) {
 					</div>
 				</PanelBody>
 			)}
-			<PanelBody title="Condition">
+			<PanelBody title={__("Condition", TEXT_DOMAIN)}>
 				<ConditionalLogic
 					condition={condition}
 					set={props.setAttributes}
@@ -274,104 +327,114 @@ function edit(props) {
 		<div
 			className={`cwp-checkbox cwp-field ${props.className} is-style-${fieldStyle}`}
 		>
-			{!!props.isSelected && !enableCondition && (
-				<div className="cwp-required">
-					<h3>Required</h3>
-					<FormToggle checked={isRequired} onChange={handleRequired} />
-				</div>
-			)}
-
-			<div
-				ref={checkboxContainer}
-				className={`cwp-checkbox-set-backend cwp-checkbox-set ${
-					!props.isSelected ? "cwp-checkbox-set-preview" : ""
-				}`}
-			>
-				<div className="cwp-label-wrap">
-					<RichText tag="label" value={label} onChange={handleLabel} />
-
-					{!props.isSelected && isRequired && !enableCondition && (
-						<div className="cwp-required cwp-noticed">
-							<h3>{requiredLabel}</h3>
+			{
+				bulkAdd ? <Bulk_Add onChange={(c) => setCheckboxes(c)} data={props} /> : <Fragment>
+					{!!props.isSelected && !enableCondition && (
+						<div className="cwp-required">
+							<h3>{__("Required", TEXT_DOMAIN)}</h3>
+							<FormToggle checked={isRequired} onChange={handleRequired} />
 						</div>
 					)}
-				</div>
-				{checkboxes.map((checkbox, index) => {
-					const hasImage = has(checkbox, "image"),
-						image = hasImage ? checkbox.image.url : "";
 
-					return (
-						<Fragment>
-							<div className="cwp-checkbox-option">
-								<input
-									id={id.concat(index.toString())}
-									checked={checkbox.checked}
-									type="checkbox"
-									onClick={() => handleCheck(!checkbox.checked, index)}
-								/>
-								{!!props.isSelected && (
-									<label
-										style={{ width: "auto" }}
-										for={id.concat(index.toString())}
-										onClick={() => handleCheck(!checkbox.checked, index)}
-									></label>
-								)}
-								{!!props.isSelected ? (
-									<input
-										onChange={e => handleChange(e, index)}
-										onKeyDown={e => {
-											e.key === "Enter" && handleEnter(index);
-											e.key === "Backspace" && handleBackspace(index);
-										}}
-										type="text"
-										value={checkbox.label}
-									/>
-								) : (
-									<label>
-										{checkbox.label}{" "}
-										{hasImage && (
-											<ImagePreview
-												onEdit={img => handleImage(img, index, "add")}
-												onRemove={() => handleImage(null, index, "remove")}
-												isSelected={props.isSelected}
-												image={checkbox.image}
-											/>
-										)}
-									</label>
-								)}
-								{!!props.isSelected && (
-									<Fragment>
-										<ImageUpload
-											icon="format-image"
-											value={image}
-											onSelect={img => handleImage(img, index, "add")}
-										/>
-										<Button isDefault onClick={() => handleDuplicate(index)}>
-											<Icon icon="admin-page" />
-										</Button>
-										<Button isDefault onClick={() => handleDelete(index)}>
-											<Icon icon="no-alt" />
-										</Button>
-									</Fragment>
-								)}
-							</div>
-							{hasImage && props.isSelected && (
-								<ImagePreview
-									onEdit={img => handleImage(img, index, "add")}
-									onRemove={() => handleImage(null, index, "remove")}
-									isSelected={props.isSelected}
-									image={checkbox.image}
-								/>
+					<div
+						ref={checkboxContainer}
+						className={`cwp-checkbox-set-backend cwp-checkbox-set ${
+							!props.isSelected ? "cwp-checkbox-set-preview" : ""
+							}`}
+					>
+						<div className="cwp-label-wrap">
+							<RichText tag="label" value={label} onChange={handleLabel} />
+
+							{!props.isSelected && isRequired && !enableCondition && (
+								<div className="cwp-required cwp-noticed">
+									<h3>{requiredLabel}</h3>
+								</div>
 							)}
-						</Fragment>
-					);
-				})}
-				{!!props.isSelected && (
-					<div className="cwp-checkbox-controls">
-						<button onClick={addCheckbox}>Add Option</button>
+						</div>
+						{checkboxes.map((checkbox, index) => {
+							const hasImage = has(checkbox, "image"),
+								image = hasImage ? checkbox.image.url : "";
+
+							return (
+								<Fragment>
+									<div className="cwp-checkbox-option">
+										<input
+											id={id.concat(index.toString())}
+											checked={checkbox.checked}
+											type="checkbox"
+											onClick={() => handleCheck(!checkbox.checked, index)}
+										/>
+										{!!props.isSelected && (
+											<label
+												style={{ width: "auto" }}
+												for={id.concat(index.toString())}
+												onClick={() => handleCheck(!checkbox.checked, index)}
+											></label>
+										)}
+										{!!props.isSelected ? (
+											<input
+												onChange={e => handleChange(e, index)}
+												onKeyDown={e => {
+													e.key === "Enter" && handleEnter(index);
+													e.key === "Backspace" && handleBackspace(index);
+												}}
+												type="text"
+												value={checkbox.label}
+											/>
+										) : (
+												<label>
+													{checkbox.label}{" "}
+													{hasImage && (
+														<ImagePreview
+															onEdit={img => handleImage(img, index, "add")}
+															onRemove={() => handleImage(null, index, "remove")}
+															isSelected={props.isSelected}
+															image={checkbox.image}
+														/>
+													)}
+												</label>
+											)}
+										{!!props.isSelected && (
+											<Fragment>
+												<ImageUpload
+													icon="format-image"
+													value={image}
+													onSelect={img => handleImage(img, index, "add")}
+												/>
+												<Button isDefault onClick={() => handleDuplicate(index)}>
+													<Icon icon="admin-page" />
+												</Button>
+												<Button isDefault onClick={() => handleDelete(index)}>
+													<Icon icon="no-alt" />
+												</Button>
+											</Fragment>
+										)}
+									</div>
+									{hasImage && props.isSelected && (
+										<ImagePreview
+											onEdit={img => handleImage(img, index, "add")}
+											onRemove={() => handleImage(null, index, "remove")}
+											isSelected={props.isSelected}
+											image={checkbox.image}
+										/>
+									)}
+								</Fragment>
+							);
+						})}
+						{!!props.isSelected && (
+							<div className="cwp-checkbox-controls">
+								<div>
+									<Button isDefault onClick={addCheckbox}>{__("Add Option", TEXT_DOMAIN)}</Button>
+									<Button isDefault onClick={() => props.setAttributes({ bulkAdd: true })}>{__("Bulk Add", TEXT_DOMAIN)}</Button>
+								</div>
+								<div>
+									<Button onClick={clearAll}>{__("Clear All", TEXT_DOMAIN)}</Button>
+								</div>
+							</div>
+						)}
 					</div>
-				)}
-			</div>
+				</Fragment>
+			}
 		</div>
 	];
 }

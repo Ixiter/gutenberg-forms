@@ -12,15 +12,17 @@ import {
 import {
 	getFieldName,
 	extract_id,
-	getEncodedData
+	getEncodedData,
+	extract_admin_id,
+	get_admin_id
 } from "../../block/misc/helper";
 
 import { clone, set, assign } from "lodash";
-import { getRootMessages } from "../../block/functions/index";
+import { getRootMessages, detect_similar_forms } from "../../block/functions/index";
 import ConditionalLogic from "../../block/components/condition";
+import { TEXT_DOMAIN } from "../../block/constants";
 
 const { __ } = wp.i18n;
-
 const {
 	InspectorControls,
 	BlockControls,
@@ -59,26 +61,34 @@ function edit(props) {
 		condition,
 		enableCondition,
 		minimumLength,
-		maximumLength
+		maximumLength,
+		adminId
 	} = props.attributes;
 
 	const getRootData = () => {
-		if (field_name === "") {
+		if (field_name === "" || detect_similar_forms(props.clientId)) {
+
+			const newFieldName = getFieldName("message", props.clientId);
+
 			props.setAttributes({
-				field_name: getFieldName("message", props.clientId)
+				field_name: newFieldName,
+				adminId: {
+					value: extract_admin_id(newFieldName, 'message'),
+					default: extract_admin_id(newFieldName, 'message')
+				}
 			});
 			props.setAttributes({
 				id:
 					props.clientId +
 					"__" +
-					getEncodedData("message", props.clientId, isRequired)
+					getEncodedData("message", props.clientId, isRequired, get_admin_id(adminId))
 			});
 		} else if (field_name !== "") {
 			props.setAttributes({
 				id:
 					extract_id(field_name) +
 					"__" +
-					getEncodedData("message", extract_id(field_name), isRequired)
+					getEncodedData("message", extract_id(field_name), isRequired, get_admin_id(adminId))
 			});
 		}
 	}
@@ -94,10 +104,10 @@ function edit(props) {
 			props.setAttributes({ messages: newMessages });
 		}
 		getRootData();
-		
+
 	}, []);
 
-	useEffect(() => getRootData() , [props]);
+	useEffect(() => getRootData(), [props]);
 
 	const setMessages = (type, m) => {
 		let newMessages = clone(messages);
@@ -107,13 +117,33 @@ function edit(props) {
 		props.setAttributes({ messages: newMessages });
 	};
 
+
+	const handleAdminId = (id) => {
+		props.setAttributes({
+			adminId: {
+				...adminId,
+				value: id.replace(/\s|-/g, "_")
+			}
+		})
+	}
+
 	return [
 		!!props.isSelected && (
 			<InspectorControls>
-				<PanelBody title="Field Settings" initialOpen={true}>
+				<PanelBody title={__("Field Settings", TEXT_DOMAIN)} initialOpen={true}>
+
+					<div className="cwp-option">
+						<TextControl
+							placeholder={adminId.default}
+							label={__("Field ID", TEXT_DOMAIN)}
+							value={adminId.value}
+							onChange={handleAdminId}
+						/>
+					</div>
+
 					{!enableCondition ? (
 						<PanelRow>
-							<h3 className="cwp-heading">Required</h3>
+							<h3 className="cwp-heading">{__("Required", TEXT_DOMAIN)}</h3>
 							<FormToggle
 								label="Required"
 								checked={isRequired}
@@ -123,14 +153,13 @@ function edit(props) {
 					) : (
 							<div className="cwp-option">
 								<p>
-									<Icon icon="info" /> You cannot set a conditional field
-								required!
-							</p>
+									<Icon icon="info" /> {__("You cannot set a conditional field required!", TEXT_DOMAIN)}
+								</p>
 							</div>
 						)}
 					{isRequired && (
 						<div className="cwp-option">
-							<h3 className="cwp-heading">Required Text</h3>
+							<h3 className="cwp-heading">{__("Required Text", TEXT_DOMAIN)}</h3>
 							<TextControl
 								onChange={label =>
 									props.setAttributes({ requiredLabel: label })
@@ -141,7 +170,7 @@ function edit(props) {
 					)}
 					<div className="cwp-option">
 						<RangeControl
-							label={__('Minimum Length')}
+							label={__('Minimum Length', TEXT_DOMAIN)}
 							value={minimumLength}
 							initialPosition={0}
 							onChange={value => props.setAttributes({ minimumLength: value })}
@@ -149,7 +178,7 @@ function edit(props) {
 							max={1000}
 						/>
 						<RangeControl
-							label={__('Maximum Length')}
+							label={__('Maximum Length', TEXT_DOMAIN)}
 							value={maximumLength}
 							onChange={value => props.setAttributes({ maximumLength: value })}
 							min={1}
@@ -157,7 +186,7 @@ function edit(props) {
 						/>
 					</div>
 				</PanelBody>
-				<PanelBody title="Condition">
+				<PanelBody title={__("Condition", TEXT_DOMAIN)}>
 					<ConditionalLogic
 						condition={condition}
 						set={props.setAttributes}
@@ -165,10 +194,10 @@ function edit(props) {
 						useCondition={props.attributes.enableCondition}
 					/>
 				</PanelBody>
-				<PanelBody title="Messages">
+				<PanelBody title={__("Messages", TEXT_DOMAIN)}>
 					{isRequired && (
 						<div className="cwp-option">
-							<h3 className="cwp-heading">Required Error</h3>
+							<h3 className="cwp-heading">{__("Required Error", TEXT_DOMAIN)}</h3>
 							<TextControl
 								onChange={label => setMessages("empty", label)}
 								value={empty}
@@ -176,7 +205,7 @@ function edit(props) {
 						</div>
 					)}
 					<div className="cwp-option">
-						<h3 className="cwp-heading">Invalid Message Error</h3>
+						<h3 className="cwp-heading">{__("Invalid Message Error", TEXT_DOMAIN)}</h3>
 						<TextControl
 							onChange={v => setMessages("invalid", v)}
 							value={invalid}
@@ -184,14 +213,16 @@ function edit(props) {
 					</div>
 					<div className="cwp-option">
 						<p>
-							<Icon icon="info" /> Use {"{{value}}"} to insert field value!
+							<Icon icon="info" /> {
+								__("Use {{value}} to insert field value!", TEXT_DOMAIN)
+							}
 						</p>
 					</div>
 				</PanelBody>
-				<PanelBody title="Validation">
+				<PanelBody title={__("Validation", TEXT_DOMAIN)}>
 					<div className="cwp-option">
 						<TextControl
-							label="Pattern (RegExp)"
+							label={__("Pattern (RegExp)", TEXT_DOMAIN)}
 							onChange={pattern => props.setAttributes({ pattern })}
 							value={pattern}
 						/>
@@ -203,7 +234,7 @@ function edit(props) {
 		<div className={`cwp-message cwp-field ${props.className}`}>
 			{!!props.isSelected && !enableCondition && (
 				<div className="cwp-required">
-					<h3>Required</h3>
+					<h3>{__("Required", TEXT_DOMAIN)}</h3>
 					<FormToggle checked={isRequired} onChange={handleRequired} />
 				</div>
 			)}

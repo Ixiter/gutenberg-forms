@@ -1,19 +1,17 @@
 <?php
     require_once plugin_dir_path( __DIR__ ) . 'triggers/validator.php';
-    require_once plugin_dir_path( __DIR__ ) . 'triggers/file.php';
-
-    function array_remove_keys($array, $keys) {
-
-        $assocKeys = array();
-        foreach($keys as $key) {
-            $assocKeys[$key] = true;
-        }
-
-        return array_diff_key($array, $assocKeys);
-    }
+    require_once plugin_dir_path( __DIR__ ) . 'triggers/functions.php';
 
 
-    class Email {
+    require_once plugin_dir_path( __DIR__ ) . 'submissions/entries.php';
+
+/**
+ * @property Validator validator
+ * @property wp_post_content post_content
+ * @property array attachments
+ */
+
+class Email {
 
         public function __construct($post_content) {
 
@@ -47,6 +45,7 @@
 
 
         private function get_templates($id, $blocks = null) {
+
             if (is_null($blocks)) {
                 $blocks = $this->post_content;
             }
@@ -54,7 +53,6 @@
             $templates = array();
 
             foreach( $blocks as $f => $block ) {
-
                 if ( $block['blockName'] === "cwp/block-gutenberg-forms" && $block['attrs']['id'] === $id ) {
 
                     $decoded_template = array();
@@ -79,7 +77,8 @@
                     if (array_key_exists('email' ,$attributes)) {
                         $user_email = $attributes['email'];
 
-                        if ($this->validator->isEmail($user_email)) {
+
+                        if ($this->validator->is_valid_admin_mail($user_email)) {
                             $decoded_template['email'] = $user_email;
                         }
                     }
@@ -118,8 +117,8 @@
                     }
 
                     $templates[] = $decoded_template;
-                    
-                } else {
+
+                }else {
                     $templates += $this->get_templates($id, $block['innerBlocks']);
                 }
 
@@ -136,8 +135,12 @@
 
         private function execute_captchas($user_response , $secretKey) {
 
-            if ($secretKey === "") return false;
-            if ($user_response === "") return false;
+            if ($secretKey === "") {
+				return false;
+			}
+            if ($user_response === "") {
+				return false;
+			}
 
 
             $verifyResponse = file_get_contents('https://www.google.com/recaptcha/api/siteverify?secret='.$secretKey.'&response='.$user_response);
@@ -161,7 +164,9 @@
 
             if (count($_FILES) !== 0) {
                 foreach ($_FILES as $file_id => $file_meta) {
-                    $post_without_submit[$file_id] = $file_meta;
+                    if (!empty($file_meta['tmp_name'])) {
+                        $post_without_submit[$file_id] = $file_meta;
+                    }
                 }
             }
 
@@ -197,68 +202,59 @@
                     'field_value' => $sanitized_field_value,
                     'is_valid'    => $field_id === "g-recaptcha-response" ? true: $is_valid,
                     'field_id'    => $field_id,
-                    'field_type'  =>  $type
+                    'field_type'  =>  $type,
+                    'decoded_entry' =>  $this->validator->decode( $field_type )
                 );
-
-
 
                 if ($type === 'file_upload') {
 
                     // updating attachment files;
-
                     $file_to_upload = $_FILES;
                     $file_name = $file_to_upload[$field_id]['name'];
                     $tmp_name = $file_to_upload[$field_id]['tmp_name'];
 
-                    $allowed_defaults =  array(
-                        "jpg",
-                        "jpeg",
-                        "png",
-                        "gif",
-                        "pdf",
-                        "doc",
-                        "docx",
-                        "ppt",
-                        "pptx",
-                        "odt",
-                        "avi",
-                        "ogg",
-                        "m4a",
-                        "mov",
-                        "mp3",
-                        "mp4",
-                        "mpg",
-                        "wav",
-                        "wmv"
-                    );
                     $parsed_alloweds =  json_decode($f_DECODED['extra_meta'], false);
 
-                    // $allowed = sizeof($parsed_alloweds) === 0 ? $allowed_defaults : $parsed_alloweds;
-                    
                     $ext = pathinfo($file_name, PATHINFO_EXTENSION);
-                    
-                    if( in_array($ext,$allowed_defaults) ) {
-                        move_uploaded_file( $tmp_name, WP_CONTENT_DIR.'/uploads/'.basename( $file_name ) );
-                        $file_path = WP_CONTENT_DIR.'/uploads/'.basename( $file_name );
+
+                    $is_allowed = $this->validator->test_file_formats($ext, $parsed_alloweds);
+
+                    $hexed_file_name = md5(uniqid(rand(), true));
+
+                    $hexed_file_name .= ".$ext";
+
+                    if( $is_allowed ) {
+
+                        wp_mkdir_p( WP_CONTENT_DIR.'/uploads/gutenberg-forms-uploads/' );
+                        move_uploaded_file( $tmp_name, WP_CONTENT_DIR.'/uploads/gutenberg-forms-uploads/'.$hexed_file_name );
+                        $file_path = WP_CONTENT_DIR.'/uploads/gutenberg-forms/'.$hexed_file_name;
+
+                        $arranged_data['file_name'] = $hexed_file_name;
 
                         $this->attachments[] = $file_path;
-                        
+
                     } else {
                         $arranged_data['is_valid'] = false;
                     }
-                    
+
+                }
+
+                if ( $this->validator->is_hidden_data_field($field_id) ) {
+
+                    $arranged_data['is_valid'] = true;
                 }
 
                 $arranged_fields[] = $arranged_data;
             }
 
 
-           if ( $this->is_fields_valid( $arranged_fields ) ) {
+            if ( $this->is_fields_valid( $arranged_fields ) ) {
                // check if all the fields are valid;
                 $this->sendMail( $arranged_fields );
            }
 
         }
+
 
         private function with_fields( $fields, $target ) {
 
@@ -267,12 +263,12 @@
 
             foreach( $fields as $field => $field_value ) {
 
-
                 $field_name = "{{".$field_value['field_type']."-".$field_value['field_data_id']."}}";
 
                 if ($field_name !== "{{-}}") {
                     $data[$field_name] = $field_value['field_value'];
                 }
+
             }
 
             $replaced_str = strtr($target, $data);
@@ -315,27 +311,31 @@
 
         private function attempt_success( $template ) {
 
+			/**
+			 * @var string $successType
+			 * @var string $successURL
+			 * @var string $successMessage
+			 * @var boolean $hideFormOnSuccess
+			 */
+
             if (!isset($template)) return;
             extract($template);
 
-            if ($successType === "url") {
+            if ( $successType === "url" ) {
                 $this->url_success($successURL);
             } else if ($successType === "message") {
-                $this->message_success($successMessage, $hideFormOnSuccess);
+                $this->message_success( $successMessage, $hideFormOnSuccess );
             }
 
-        }
-
-        private function get_multiple($field) {
-            if( isset($field) && is_array($field) ) {
-                return $fieldList = implode(', ', $field);
-            }
         }
 
         public function sendMail( $fields ) {
 
             $template = $this->get_templates($_POST['submit'])[0];
 
+			/**
+			 * @var string $fromEmail
+			 */
 
             isset($template) && extract($template);
 
@@ -344,16 +344,15 @@
             $headers = '';
 
 
-            if ( count( $this->attachments ) !== 0 ) {
+			if ( count( $this->attachments ) !== 0 ) {
                 $headers .= 'Content-type: multipart/mixed; charset=iso-8859-1' . "\r\n";
             }
 
-            if (!is_null($fromEmail)) {
-                $headers .= "From: $fromEmail";
-            }
+            if (is_null($fromEmail) === false) {
+				$headers .= "From: $fromEmail";
+			}
 
             $post = $_POST;
-
 
             if ($this->has_captcha($post)) {
                 $captcha_success = $this->execute_captchas($post['g-recaptcha-response'], $template['recaptcha']['clientSecret']);
@@ -367,32 +366,26 @@
                 }
             }
 
+            $newEntry = Entries::create_entry( $template, $mail_subject, $mail_body, $fields, $this->attachments );
 
             if (array_key_exists('email' , $template)) {
 
                 if ($this->validator->isEmpty($headers)) {
-                    print 'MAIL SENDED';
-
-                    // wp_mail($template['email'],$mail_subject,$mail_body , null, $this->attachments);
+                    wp_mail($template['email'],$mail_subject,$mail_body , null, $this->attachments);
                 } else {
-                    print 'MAIL SENDED';
-                    // wp_mail($template['email'],$mail_subject,$mail_body , $headers, $this->attachments);
+                    wp_mail($template['email'],$mail_subject,$mail_body , $headers, $this->attachments);
                 }
 
+                Entries::post( $newEntry );
                 $this->attempt_success($template);
 
             } else {
-
                 if ($this->validator->isEmpty($headers)) {
-                    print 'MAIL SENDED';
-
-                    // wp_mail(get_bloginfo('admin_email'),$mail_subject,$mail_body, null, $this->attachments);
+               	    wp_mail(get_bloginfo('admin_email'),$mail_subject,$mail_body, null, $this->attachments);
                 } else {
-                    print 'MAIL SENDED';
-
-                    // wp_mail(get_bloginfo('admin_email'),$mail_subject,$mail_body , $headers , $this->attachments);
+               	    wp_mail(get_bloginfo('admin_email'),$mail_subject,$mail_body , $headers , $this->attachments);
                 }
-                
+                Entries::post( $newEntry );
                 $this->attempt_success($template);
             }
         }

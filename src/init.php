@@ -1,5 +1,9 @@
 <?php
 
+
+require_once plugin_dir_path( __DIR__ ) . 'triggers/functions.php';
+
+
 if (!defined('ABSPATH')) {
 	exit;
 }
@@ -29,8 +33,6 @@ function gutenberg_forms_cwp_block_assets()
 		true
 	);
 
-
-
 	wp_register_style(
 		'gutenberg_forms-cwp-block-editor-css',
 		plugins_url('dist/blocks.editor.build.css', dirname(__FILE__)),
@@ -44,9 +46,12 @@ function gutenberg_forms_cwp_block_assets()
 		[
 			'pluginDirPath' => plugin_dir_path(__DIR__),
 			'pluginDirUrl'  => plugin_dir_url(__DIR__),
+			'site_url'		=> get_bloginfo('url'),
+			'cwp-cpt-forms' => get_forms_cpt_data(),
+			'primary-color'	=> get_user_option( 'admin_color' ),
+			'new_form_url'	=> admin_url('post-new.php?post_type=cwp_gf_forms')
 		]
 	);
-
 
 	register_block_type(
 		'cwp/block-gutenberg-forms',
@@ -60,87 +65,60 @@ function gutenberg_forms_cwp_block_assets()
 }
 
 
-// Our custom post type function
-// function create_posttype() {
+//! Our custom post type function
+function cwp_form_post_type() {
 
-// 	register_post_type(
-// 		'forms',
-// 		// CPT Options
-// 		array(
-// 			'labels' => array(
-// 				'name' => __('Forms'),
-// 				'singular_name' => __('Form')
-// 			),
-// 			'icon' => 'email-alt',
-// 			'supports' => array('editor', 'title'),
-// 			'show_in_rest' => true,
-// 			'template' => array(
-// 				array( 'cwp/block-gutenberg-forms', array() )
-// 			),
-// 			'template_lock' => 'all',
-// 			'public' => true,
-// 			'has_archive' => true,
-// 			'rewrite' => array('slug' => 'forms'),
-// 		)
-// 	);
-// }
+	require_once plugin_dir_path( __DIR__ ) . 'submissions/entries.php';
+	require_once plugin_dir_path( __DIR__ ) . 'forms-cpt/index.php';
+
+	Form::register_post_type(); //? creating a post_type for forms
+	Entries::register_post_type(); //? creating a post_type for our form entries
+
+}
 
 
-require_once plugin_dir_path( __DIR__ ) . 'triggers/email.php';
+require_once plugin_dir_path(__DIR__) . 'triggers/email.php';
 
-
-function submitter() {
+function submitter()
+{
 
 	global $post;
 
-	$content = get_post($post->ID)->post_content;
-	$parsed_blocks = parse_blocks($content);
+	if (!empty( $post )) {
+		$post = get_post( $post->ID );
 
-	if (!empty($parsed_blocks)) {
-		$email_apply = new Email($parsed_blocks);
+		$parsed_blocks = parse_blocks( do_shortcode($post->post_content) );
 
+		if (!empty($parsed_blocks)) {
 
-		$email_apply->init();
+			$email_apply = new Email($parsed_blocks);
+
+			$email_apply->init();
+		}
 	}
-
 }
 
-function my_admin_page_contents() {
-	return "<h1>Hola World</h1>";
+function cwp_gutenberg_forms_messages_meta()
+{
+	register_post_meta('post', 'myguten_meta_block_field', array(
+		'show_in_rest' => true,
+		'single' => true,
+		'type' => 'string',
+	));
 }
 
-
-// require_once plugin_dir_path( __DIR__ ) . 'admin/admin.php';
-
-// function my_sub_menu() {
-
-// 	add_submenu_page(
-// 		"edit.php?post_type=forms",
-// 		__( 'Form Settings', 'my-textdomain' ),
-// 		__( 'Form Settings', 'my-textdomain' ),
-// 		'manage_options',
-// 		'cwp-forms-settings',
-// 		'Settings'
-// 	);
-
-// }
-
-
-// add_action( 'admin_menu', 'my_sub_menu' );
-
-
-function cwp_gutenberg_forms_messages_meta() {
-    register_post_meta( 'post', 'myguten_meta_block_field', array(
-        'show_in_rest' => true,
-        'single' => true,
-        'type' => 'string',
-    ) );
+function cwpgutenbergforms_set_script_translations()
+{
+	wp_set_script_translations('gutenberg_forms-cwp-block-js', 'cwp-gutenberg-forms');
 }
-
-add_action( 'init', 'cwp_gutenberg_forms_messages_meta' );
 
 //custom_postype for our gutenberg-forms;
-add_action('wp_head' , 'submitter');
-add_action('wp-load' , 'submitter');
-// add_action('init', 'create_posttype');
+
+require_once( plugin_dir_path( __DIR__ ) . '/admin/admin.php' );
+add_action('init', 'cwpgutenbergforms_set_script_translations');
+add_action('init', 'cwp_gutenberg_forms_messages_meta');
+add_action('wp_head', 'submitter');
+add_action('wp-load', 'submitter');
+add_action('init', 'cwp_form_post_type');
+add_action('add_meta_boxes', 'cwp_form_post_type');
 add_action('init', 'gutenberg_forms_cwp_block_assets');

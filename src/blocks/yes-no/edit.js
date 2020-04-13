@@ -10,9 +10,15 @@ import {
 import {
 	getFieldName,
 	extract_id,
-	getEncodedData
+	getEncodedData,
+	extract_admin_id,
+	get_admin_id
 } from "../../block/misc/helper";
+import { TEXT_DOMAIN } from "../../block/constants/index"
+import { detect_similar_forms } from "../../block/functions";
 
+
+const { __ } = wp.i18n;
 const {
 	InspectorControls,
 	BlockControls,
@@ -43,26 +49,34 @@ function edit(props) {
 		label,
 		id,
 		field_name,
-		requiredLabel
+		requiredLabel,
+		adminId
 	} = props.attributes;
 
 	const getRootData = () => {
-		if (field_name === "") {
+		if (field_name === "" || detect_similar_forms(props.clientId)) {
+
+			const newFieldName = getFieldName("yes_no", props.clientId)
+
 			props.setAttributes({
-				field_name: getFieldName("yes_no", props.clientId)
+				field_name: newFieldName,
+				adminId: {
+					value: extract_admin_id(newFieldName, 'yes_no'),
+					default: extract_admin_id(newFieldName, 'yes_no')
+				}
 			});
 			props.setAttributes({
 				id:
 					props.clientId +
 					"__" +
-					getEncodedData("yes_no", props.clientId, isRequired)
+					getEncodedData("yes_no", props.clientId, isRequired, get_admin_id(adminId))
 			});
 		} else if (field_name !== "") {
 			props.setAttributes({
 				id:
 					extract_id(field_name) +
 					"__" +
-					getEncodedData("yes_no", extract_id(field_name), isRequired)
+					getEncodedData("yes_no", extract_id(field_name), isRequired, get_admin_id(adminId))
 			});
 		}
 	}
@@ -73,12 +87,31 @@ function edit(props) {
 
 	useEffect(() => getRootData(), [props]);
 
+	const handleAdminId = (id) => {
+		props.setAttributes({
+			adminId: {
+				...adminId,
+				value: id.replace(/\s|-/g, "_")
+			}
+		})
+	}
+
 	return [
 		!!props.isSelected && (
 			<InspectorControls>
-				<PanelBody title="Field Settings" initialOpen={true}>
+				<PanelBody title={__("Field Settings", TEXT_DOMAIN)} initialOpen={true}>
+
+					<div className="cwp-option">
+						<TextControl
+							placeholder={adminId.default}
+							label={__("Field ID", TEXT_DOMAIN)}
+							value={adminId.value}
+							onChange={handleAdminId}
+						/>
+					</div>
+
 					<PanelRow>
-						<h3 className="cwp-heading">Required</h3>
+						<h3 className="cwp-heading">{__("Required", TEXT_DOMAIN)}</h3>
 						<FormToggle
 							label="Required"
 							checked={isRequired}
@@ -87,7 +120,7 @@ function edit(props) {
 					</PanelRow>
 					{isRequired && (
 						<div className="cwp-option">
-							<h3 className="cwp-heading">Required Text</h3>
+							<h3 className="cwp-heading">{__("Required Text", TEXT_DOMAIN)}</h3>
 							<TextControl
 								onChange={label =>
 									props.setAttributes({ requiredLabel: label })
@@ -103,7 +136,7 @@ function edit(props) {
 		<div className={`cwp-yes-no cwp-field cwp-misc-field ${props.className}`}>
 			{!!props.isSelected && (
 				<div className="cwp-required">
-					<h3>Required</h3>
+					<h3>{__("Required", TEXT_DOMAIN)}</h3>
 					<FormToggle checked={isRequired} onChange={handleRequired} />
 				</div>
 			)}

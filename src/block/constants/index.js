@@ -1,12 +1,7 @@
-const languages = {
-	spanish: {
-		required: "necesario"
-	}
-};
-
-export function translator(lang, word) {
-	return languages[lang][word]; //return the translation;
-}
+export const TEXT_DOMAIN = "cwp-gutenberg-forms"; // text-domain
 
 
-//!THIS FEATURE IS UNDER PROGRESS/DEVELOPMENT
+
+//? some endpoints
+export const LIBRARY_PROXY = "https://raw.githubusercontent.com/ZafarKamal123/gutenberg-forms-templates/master/library.json";
+export const DATA_PROXY = "https://raw.githubusercontent.com/ZafarKamal123/gutenberg-forms-templates/master/data.json";

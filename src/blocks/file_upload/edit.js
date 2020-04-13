@@ -11,12 +11,15 @@ import {
 import {
 	getFieldName,
 	extract_id,
-	getEncodedData
+	getEncodedData,
+	extract_admin_id,
+	get_admin_id
 } from "../../block/misc/helper";
-import { getRootMessages, getRootFormBlock } from "../../block/functions/index";
+import { getRootMessages, getRootFormBlock, detect_similar_forms } from "../../block/functions/index";
 import ConditionalLogic from "../../block/components/condition";
 
 import { clone, set, assign, isEqual } from "lodash";
+import { TEXT_DOMAIN } from "../../block/constants";
 
 const {
 	InspectorControls,
@@ -24,6 +27,7 @@ const {
 	RichText
 } = wp.blockEditor;
 const { updateBlockAttributes } = wp.data.dispatch("core/block-editor");
+const { __ } = wp.i18n;
 
 
 function edit(props) {
@@ -54,7 +58,8 @@ function edit(props) {
 		messages,
 		condition,
 		enableCondition,
-		allowedFormats
+		allowedFormats,
+		adminId
 	} = props.attributes;
 
 	useEffect(() => {
@@ -63,30 +68,41 @@ function edit(props) {
 		const rootForm = getRootFormBlock(props.clientId);
 
 		updateBlockAttributes(rootForm.clientId, { encryption: "multipart/form-data" }); //? like a piece of cake
-				
-	} , [])
+
+	}, [])
 
 	const setRootData = () => {
-		if (field_name === "") {
-			props.setAttributes({ field_name: getFieldName("file_upload", props.clientId) });
+		if (field_name === "" || detect_similar_forms(props.clientId)) {
+
+
+			const newFieldName = getFieldName("file_upload", props.clientId);
+
+
+			props.setAttributes({
+				field_name: newFieldName,
+				adminId: {
+					value: extract_admin_id(newFieldName, 'file_upload'),
+					default: extract_admin_id(newFieldName, 'file_upload')
+				}
+			});
 			props.setAttributes({
 				id:
 					props.clientId +
 					"__" +
-					getEncodedData("file_upload", props.clientId, isRequired, JSON.stringify(allowedFormats))
+					getEncodedData("file_upload", props.clientId, isRequired, get_admin_id(adminId), JSON.stringify(allowedFormats))
 			});
 		} else if (field_name !== "") {
 			props.setAttributes({
 				id:
 					extract_id(field_name) +
 					"__" +
-					getEncodedData("file_upload", extract_id(field_name), isRequired, JSON.stringify(allowedFormats))
+					getEncodedData("file_upload", extract_id(field_name), isRequired, get_admin_id(adminId), JSON.stringify(allowedFormats))
 			});
 		}
 	}
 
 	useEffect(() => {
-        let rootMessages = getRootMessages(props.clientId, "file-upload");
+		let rootMessages = getRootMessages(props.clientId, "file-upload");
 
 		if (rootMessages) {
 			const newMessages = clone(messages);
@@ -130,12 +146,12 @@ function edit(props) {
 		"mpg",
 		"wav",
 		"wmv"
-	  ];
+	];
 
 	const handleFormats = (newFormats) => {
 
 		for (const format of newFormats) {
-			if ( !suggestions.includes(format) ) {
+			if (!suggestions.includes(format)) {
 				return;
 			}
 		}
@@ -143,13 +159,32 @@ function edit(props) {
 		props.setAttributes({ allowedFormats: newFormats });
 	}
 
+	const handleAdminId = (id) => {
+		props.setAttributes({
+			adminId: {
+				...adminId,
+				value: id.replace(/\s|-/g, "_")
+			}
+		})
+	}
+
 	return [
 		!!props.isSelected && (
 			<InspectorControls>
-				<PanelBody title="Field Settings" initialOpen={true}>
+				<PanelBody title={__("Field Settings", TEXT_DOMAIN)} initialOpen={true}>
+
+					<div className="cwp-option">
+						<TextControl
+							placeholder={adminId.default}
+							label={__("Field ID", TEXT_DOMAIN)}
+							value={adminId.value}
+							onChange={handleAdminId}
+						/>
+					</div>
+
 					{!enableCondition ? (
 						<PanelRow>
-							<h3 className="cwp-heading">Required</h3>
+							<h3 className="cwp-heading">{__("Required", TEXT_DOMAIN)}</h3>
 							<FormToggle
 								label="Required"
 								checked={isRequired}
@@ -157,17 +192,16 @@ function edit(props) {
 							/>
 						</PanelRow>
 					) : (
-						<div className="cwp-option">
-							<p>
-								<Icon icon="info" /> You cannot set a conditional field
-								required!
-							</p>
-						</div>
-					)}
+							<div className="cwp-option">
+								<p>
+									<Icon icon="info" /> {__("You cannot set a conditional field required!", TEXT_DOMAIN)}
+								</p>
+							</div>
+						)}
 					{isRequired && (
 						<Fragment>
 							<div className="cwp-option">
-								<h3 className="cwp-heading">Required Text</h3>
+								<h3 className="cwp-heading">{__("Required Text", TEXT_DOMAIN)}</h3>
 								<TextControl
 									onChange={label =>
 										props.setAttributes({ requiredLabel: label })
@@ -178,18 +212,18 @@ function edit(props) {
 						</Fragment>
 					)}
 					<div className="cwp-option column">
-						<h3>Allowed Formats</h3>
+						<h3>{__("Allowed Formats", TEXT_DOMAIN)}</h3>
 						<div className="cwp-column">
-						<FormTokenField 
-							value={ allowedFormats } 
-							suggestions={ suggestions } 
-							onChange={ f => handleFormats(f) }
-							placeholder="Allowed Format(s)"
-						/>
+							<FormTokenField
+								value={allowedFormats}
+								suggestions={suggestions}
+								onChange={f => handleFormats(f)}
+								placeholder="Allowed Format(s)"
+							/>
 						</div>
 					</div>
 				</PanelBody>
-				<PanelBody title="Condition">
+				<PanelBody title={__("Condition", TEXT_DOMAIN)}>
 					<ConditionalLogic
 						condition={condition}
 						set={props.setAttributes}
@@ -197,10 +231,10 @@ function edit(props) {
 						useCondition={props.attributes.enableCondition}
 					/>
 				</PanelBody>
-				<PanelBody title="Messages">
+				<PanelBody title={__("Messages", TEXT_DOMAIN)}>
 					{isRequired && (
 						<div className="cwp-option">
-							<h3 className="cwp-heading">Required Error</h3>
+							<h3 className="cwp-heading">{__("Required Error", TEXT_DOMAIN)}</h3>
 							<TextControl
 								onChange={label => setMessages("empty", label)}
 								value={empty}
@@ -208,7 +242,7 @@ function edit(props) {
 						</div>
 					)}
 					<div className="cwp-option">
-						<h3 className="cwp-heading">Invalid File Error</h3>
+						<h3 className="cwp-heading">{__("Invalid File Error", TEXT_DOMAIN)}</h3>
 						<TextControl
 							onChange={v => setMessages("invalid", v)}
 							value={invalid}
@@ -216,7 +250,7 @@ function edit(props) {
 					</div>
 					<div className="cwp-option">
 						<p>
-							<Icon icon="info" /> Use {"{{value}}"} to insert field value!
+							<Icon icon="info" /> {__("Use {{value}} to insert field value!", TEXT_DOMAIN)}
 						</p>
 					</div>
 				</PanelBody>
@@ -226,7 +260,7 @@ function edit(props) {
 		<div className={`cwp-file cwp-field ${props.className}`}>
 			{!!props.isSelected && !enableCondition && (
 				<div className="cwp-required">
-					<h3>Required</h3>
+					<h3>{__("Required", TEXT_DOMAIN)}</h3>
 					<FormToggle checked={isRequired} onChange={handleRequired} />
 				</div>
 			)}
@@ -239,7 +273,7 @@ function edit(props) {
 						</div>
 					)}
 				</div>
-				<input type="file" required={isRequired}  />
+				<input type="file" disabled required={isRequired} />
 			</div>
 		</div>
 	];

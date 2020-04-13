@@ -3,16 +3,19 @@ import { each, has, omit, isEqual, clone, assign, isEmpty, get } from "lodash";
 
 import formStepSave from "../../blocks/form-step/save";
 import formStepEdit from "../../blocks/form-step/edit";
-
+import $ from 'jquery'
+const { getPostType } = wp.data.select('core');
 const { createBlock, registerBlockType } = wp.blocks;
 const { __ } = wp.i18n;
 
 const {
 	getBlock,
 	getBlockRootClientId,
-	getBlockHierarchyRootClientId
+	getBlockHierarchyRootClientId,
+	getPreviousBlockClientId
 } = wp.data.select("core/block-editor");
 const { updateBlockAttributes } = wp.data.dispatch("core/block-editor");
+const { withSelect } = wp.data;
 
 const radio_enabled_fields = ["select", "radio", "checkbox"]; //fields that support multiple
 
@@ -76,7 +79,8 @@ export const getFieldTransform = (attrs, field) => {
 	return createBlock(fieldBlock, config);
 };
 
-const layoutBlocks = ["cwp/form-column", "cwp/column", "cwp/form-group"]; //blocks that will be ignored while serializing...
+const layoutBlocks = ["cwp/form-column", "cwp/column", "cwp/form-group", "cwp/form-step"]; //blocks that will be ignored while serializing...
+const miscBlocks = ["cwp/form-button"];
 
 export const defaultFieldMessages = [
 	{
@@ -280,14 +284,16 @@ export function getSiblings(clientId, slug = null) {
 			isCakewpBlock: v.name.startsWith("cwp/"), //ensuring that this is our block!
 			isFieldBlock: myAttrs.includes(breaked[breaked.length - 1]), //ensuring that it is a gutenberg-form field;
 			isLayoutBlock: layoutBlocks.includes(v.name), //ensuring that it is not a layout block
-			currentBlock: v.clientId === clientId //ensuring that this is not the block
+			currentBlock: v.clientId === clientId, //ensuring that this is not the block
+			miscBlocks: miscBlocks.includes(v.name)
 		};
 
 		if (
 			conditions.isCakewpBlock &&
 			conditions.isFieldBlock &&
 			!conditions.isLayoutBlock &&
-			!conditions.currentBlock
+			!conditions.currentBlock &&
+			!conditions.miscBlock
 		) {
 			if (slug === null) {
 				siblingValues.push(v.attributes);
@@ -323,6 +329,7 @@ export function isChildFieldsRequired(clientId) {
 
 export function detectSimilarFields(clientId, field_id) {
 	//this will detect the similar id across fields
+
 
 	const root = getBlock(getBlockRootClientId(clientId));
 	let result = false;
@@ -377,5 +384,37 @@ export function getFormTemplates(type) {
 		]
 
 	}
+
+}
+
+
+export function detect_similar_forms(clientId) {
+
+	//? test if the form is duplicated and has the same form id as the above form
+
+	let currentBlock = getBlock(clientId);
+	let previousBlock = getBlock(getPreviousBlockClientId(clientId));
+
+	// getting the previous block because when user duplicate a block it is appended after, Therefore this is the duplicated block
+
+	if (!isEmpty(previousBlock) && get(previousBlock, 'name') === get(currentBlock, 'name')) {
+		// checking if the previousBlock is not empty and it is our form block
+
+
+		let form_id_prev = get(previousBlock, 'attributes.id');
+
+		let current_form_id = get(currentBlock, 'attributes.id');
+
+
+		if (isEqual(form_id_prev, current_form_id)) {
+			return true;
+		}
+
+
+	}
+
+
+	return false;
+
 
 }
