@@ -7,6 +7,10 @@ import { defaultFieldMessages } from '../../block/functions';
 import { fieldSupport } from '../../constants';
 import { deprecated } from "./deprecated";
 
+
+
+
+
 const attributes = {
 	submitLabel: {
 		type: "string",
@@ -93,11 +97,22 @@ const attributes = {
 	formLabel: {
 		type: "string",
 		default: ""
+	},
+	saveToEntries: {
+		type: "boolean",
+		default: true
+	},
+	sendEmail: {
+		type: "boolean",
+		default: true
 	}
 }
 
 registerBlockType("cwp/block-gutenberg-forms", {
-	supports: fieldSupport,
+	supports: {
+		...fieldSupport,
+		reusable: false
+	},
 	title: __("Gutenberg Forms"),
 	icon: __("feedback"),
 	category: "common",

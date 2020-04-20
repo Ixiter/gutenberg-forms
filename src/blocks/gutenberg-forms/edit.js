@@ -1,15 +1,13 @@
 import React, { useEffect, Fragment } from "react";
 import Inspector from "./Inspector";
-import TemplateBuilder from "./components/templateBuilder";
 import Introduction from "./components/introduction";
 import { isEmpty, get } from "lodash";
 import { getFormTemplates, detect_similar_forms } from "../../block/functions/index";
 import { getThemeStyling } from "../../block/misc/helper";
-import { TEXT_DOMAIN } from "../../block/constants";
 import { withDispatch } from "@wordpress/data";
+import { TEXT_DOMAIN } from "../../block/constants";
 
-const { InnerBlocks, RichText, BlockControls, BlockIcon } = wp.blockEditor;
-const { Button, Toolbar, Tooltip } = wp.components;
+const { InnerBlocks, RichText } = wp.blockEditor;
 
 const { compose } = wp.compose;
 const { __ } = wp.i18n;
@@ -25,7 +23,7 @@ function edit(props) {
 		theme,
 		formType,
 		cpt,
-		formLabel
+		formLabel,
 	} = props.attributes;
 
 	const formId = id && "form-".concat(id.split("-")[1]);
@@ -61,22 +59,7 @@ function edit(props) {
 
 	return [
 		isEmpty(formType) ? null : <Inspector data={props} />,
-		<BlockControls>
-			<Toolbar>
-				<Tooltip text={__(templateBuilder ? 'Form Builder' : "Email Builder", TEXT_DOMAIN)}>
-					<Button
-						onClick={() => {
-							props.setAttributes({ templateBuilder: !templateBuilder });
-						}}
-					>
-						<BlockIcon
-							icon={templateBuilder ? "feedback" : "email"}
-							showColors
-						/>
-					</Button>
-				</Tooltip>
-			</Toolbar>
-		</BlockControls>,
+		null,
 		<Fragment>
 			{
 				isEmpty(formType) ?
@@ -94,6 +77,7 @@ function edit(props) {
 								<div className={`cwp-submit ${alignment}`}>
 									<button className="cwp-submit-btn cwp-default-submit-btn">
 										<RichText
+											placeholder={__("Add a label", TEXT_DOMAIN)}
 											tag="span"
 											value={submitLabel}
 											onChange={handleButtonLabel}
@@ -101,11 +85,6 @@ function edit(props) {
 									</button>
 								</div>
 							)}
-						</div>
-						<div className={`cwp-form ${showEditor}`}>
-							<div className="cwp-editor">
-								<TemplateBuilder clientId={props.clientId} data={props} />
-							</div>
 						</div>
 						<div
 							dangerouslySetInnerHTML={{ __html: getThemeStyling(theme, formId) }}
